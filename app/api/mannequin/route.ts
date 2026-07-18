@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import { uploadToBucket, BUCKETS } from "@/lib/storage";
+import { toPngBuffer } from "@/lib/image";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,11 +38,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const type = file.type || "image/png";
-  const ext = type.includes("jpeg") || type.includes("jpg") ? "jpg" : "png";
+  const rawBuffer = Buffer.from(await file.arrayBuffer());
 
-  const base_image_url = await uploadToBucket(BUCKETS.mannequin, buffer, type, ext);
+  // Normalize the base to PNG (the format the image-edit endpoint accepts).
+  let buffer: Buffer = rawBuffer;
+  try {
+    buffer = await toPngBuffer(rawBuffer);
+  } catch (convErr) {
+    console.error("[mannequin] PNG conversion failed, storing original bytes:", convErr);
+  }
+
+  const base_image_url = await uploadToBucket(BUCKETS.mannequin, buffer, "image/png", "png");
 
   // Deactivate previous bases, then insert the new active one (keeps history).
   await supabase.from("mannequin_config").update({ is_active: false }).eq("is_active", true);

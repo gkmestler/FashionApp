@@ -2,7 +2,7 @@
 
 import { ClothingItem, DAY_NAMES, DAY_SHORT } from "@/lib/types";
 import type { DayView } from "@/lib/week-data";
-import { PaletteStrip } from "@/components/ui";
+import { PaletteStrip, ZoomableImage } from "@/components/ui";
 
 /**
  * A single day in My view. Starts "wrapped"; tapping reveals the mannequin
@@ -28,7 +28,7 @@ export default function RevealCard({
         disabled={!hasOutfit}
         className={`group relative flex aspect-[3/4] flex-col items-center justify-center overflow-hidden rounded-3xl border text-center transition ${
           hasOutfit
-            ? "cursor-pointer border-accent/30 bg-gradient-to-br from-accent-soft to-[#f6ede6] hover:shadow-lg active:scale-[0.98]"
+            ? "cursor-pointer border-accent/40 bg-gradient-to-br from-accent-soft to-background hover:border-accent hover:shadow-lg active:scale-[0.98]"
             : "cursor-default border-border bg-surface"
         }`}
       >
@@ -54,9 +54,8 @@ export default function RevealCard({
         {day.palette?.length > 0 && <PaletteStrip palette={day.palette} size={16} />}
       </div>
 
-      <div className="animate-flip-in mt-2 aspect-[3/4] bg-[#f4efe8]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={day.generated_image_url!} alt="Today's outfit" className="h-full w-full object-contain" />
+      <div className="animate-flip-in mt-2 aspect-[2/3] bg-[#1a1a17]">
+        <ZoomableImage src={day.generated_image_url!} alt="Today's outfit" className="h-full w-full object-contain" />
       </div>
 
       <div className="animate-fade-up flex flex-col gap-2.5 p-4">
@@ -73,7 +72,7 @@ export default function RevealCard({
                 <img
                   src={item.image_url}
                   alt={item.name}
-                  className="h-8 w-8 rounded-md border border-border bg-[#f4efe8] object-contain p-0.5"
+                  className="h-8 w-8 rounded-md border border-border bg-[#1a1a17] object-contain p-0.5"
                 />
                 <span className="flex-1 truncate">{item.name}</span>
                 <span className="text-xs capitalize text-muted">{item.category}</span>

@@ -2,7 +2,7 @@
 
 import { PaletteEntry } from "@/lib/types";
 import { toHex } from "@/lib/palette";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 export function PaletteStrip({
   palette,
@@ -20,7 +20,7 @@ export function PaletteStrip({
         <span
           key={`${p.hex}-${i}`}
           title={p.name}
-          className="rounded-full border border-black/10 shadow-sm"
+          className="rounded-full border border-white/15 shadow-sm"
           style={{ backgroundColor: p.hex, width: size, height: size }}
         />
       ))}
@@ -37,11 +37,49 @@ export function ColorDots({ colors, size = 16 }: { colors: string[]; size?: numb
         <span
           key={`${c}-${i}`}
           title={c}
-          className="rounded-full border border-black/10"
+          className="rounded-full border border-white/15"
           style={{ backgroundColor: toHex(c), width: size, height: size }}
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * A round color swatch backed by a native color picker. Shows the actual color
+ * (resolving names like "navy" to hex) and opens the OS picker on click. Used to
+ * pick a new color or change an existing color tag.
+ */
+export function ColorSwatchPicker({
+  value,
+  onChange,
+  size = 18,
+  title,
+}: {
+  value: string;
+  onChange: (hex: string) => void;
+  size?: number;
+  title?: string;
+}) {
+  const hex = toHex(value);
+  return (
+    <span
+      className="relative inline-block shrink-0 align-middle"
+      style={{ width: size, height: size }}
+      title={title ?? "Pick a color"}
+    >
+      <span
+        className="block h-full w-full rounded-full border border-white/15 shadow-sm"
+        style={{ backgroundColor: hex }}
+      />
+      <input
+        type="color"
+        value={hex}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={title ?? "Pick a color"}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </span>
   );
 }
 
@@ -78,7 +116,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
       onClick={onClose}
     >
       <div
@@ -90,7 +128,7 @@ export function Modal({
             <h2 className="text-base font-semibold">{title}</h2>
             <button
               onClick={onClose}
-              className="rounded-full p-1.5 text-muted hover:bg-accent-soft hover:text-foreground"
+              className="rounded-none p-1.5 text-muted hover:bg-accent-soft hover:text-foreground"
               aria-label="Close"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -101,6 +139,110 @@ export function Modal({
         )}
         <div className="p-5">{children}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * An image that opens a full-screen, zoomable/pannable lightbox on click.
+ * The trigger keeps whatever classes you pass (so it drops into existing
+ * layouts); `object-contain` on the trigger ensures nothing is cropped in place.
+ */
+export function ZoomableImage({
+  src,
+  alt = "",
+  className = "",
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onClick={() => setOpen(true)}
+        className={`cursor-zoom-in ${className}`}
+      />
+      {open && <Lightbox src={src} alt={alt} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const setZoom = (next: number) => {
+    const s = Math.min(6, Math.max(1, next));
+    setScale(s);
+    if (s === 1) setPos({ x: 0, y: 0 });
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (scale <= 1) return;
+    drag.current = { px: e.clientX, py: e.clientY, ox: pos.x, oy: pos.y };
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLImageElement>) => {
+    if (!drag.current) return;
+    setPos({ x: drag.current.ox + (e.clientX - drag.current.px), y: drag.current.oy + (e.clientY - drag.current.py) });
+  };
+  const endDrag = () => {
+    drag.current = null;
+    setDragging(false);
+  };
+
+  const btn =
+    "flex h-9 w-9 items-center justify-center border border-white/20 bg-black/50 text-lg text-white hover:bg-white/15";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <div className="absolute right-4 top-4 z-10 flex gap-2" onClick={(e) => e.stopPropagation()}>
+        <button className={btn} onClick={() => setZoom(scale - 0.5)} aria-label="Zoom out" title="Zoom out">
+          −
+        </button>
+        <button className={btn} onClick={() => setZoom(scale + 0.5)} aria-label="Zoom in" title="Zoom in">
+          +
+        </button>
+        <button className={btn} onClick={() => setZoom(1)} aria-label="Reset zoom" title="Reset">
+          ⤢
+        </button>
+        <button className={btn} onClick={onClose} aria-label="Close" title="Close">
+          ✕
+        </button>
+      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={() => setZoom(scale > 1 ? 1 : 2.5)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        draggable={false}
+        style={{
+          transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
+          cursor: scale > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
+        }}
+        className="max-h-[90vh] max-w-[92vw] touch-none select-none object-contain transition-transform duration-100"
+      />
     </div>
   );
 }
@@ -121,7 +263,7 @@ export function Button({
   className?: string;
 }) {
   const styles: Record<string, string> = {
-    primary: "bg-accent text-white hover:opacity-90 disabled:opacity-50",
+    primary: "bg-accent text-black hover:opacity-90 disabled:opacity-50",
     ghost: "text-muted hover:bg-accent-soft hover:text-foreground",
     outline: "border border-border bg-surface hover:bg-accent-soft",
     danger: "bg-red-600 text-white hover:bg-red-700 disabled:opacity-50",
@@ -131,7 +273,7 @@ export function Button({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${styles[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-none px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${styles[variant]} ${className}`}
     >
       {children}
     </button>

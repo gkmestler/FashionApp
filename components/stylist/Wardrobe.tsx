@@ -92,11 +92,11 @@ export default function Wardrobe({ refreshKey }: { refreshKey: number }) {
                 item.status !== "active" ? "opacity-50" : ""
               }`}
             >
-              <div className="relative aspect-square bg-[#f4efe8]">
+              <div className="relative aspect-square bg-[#1a1a17]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-2" />
                 {item.status !== "active" && (
-                  <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium capitalize text-white">
+                  <span className="absolute left-2 top-2 rounded-none bg-black/70 px-2 py-0.5 text-[10px] font-medium capitalize text-white">
                     {item.status}
                   </span>
                 )}

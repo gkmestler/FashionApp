@@ -1,5 +1,5 @@
 // Thin client-side fetch helpers. All privileged work is behind these routes.
-import { ClothingItem, ItemDraft } from "./types";
+import { ClothingItem, ItemDraft, GeneratedOutfit } from "./types";
 import type { WeekView, DayView } from "./week-data";
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
@@ -121,4 +121,16 @@ export async function generateOutfit(itemIds: string[], force = false): Promise<
     body: JSON.stringify({ item_ids: itemIds, force }),
   });
   return jsonOrThrow<GenResult>(res);
+}
+
+// ---- Saved outfits ("looks") ----
+export async function listOutfits(): Promise<GeneratedOutfit[]> {
+  const res = await fetch("/api/outfits", { cache: "no-store" });
+  const data = await jsonOrThrow<{ outfits: GeneratedOutfit[] }>(res);
+  return data.outfits;
+}
+
+export async function deleteOutfit(id: string): Promise<void> {
+  const res = await fetch(`/api/outfits/${id}`, { method: "DELETE" });
+  await jsonOrThrow(res);
 }

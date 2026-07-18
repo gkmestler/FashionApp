@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClothingItem, DAY_NAMES } from "@/lib/types";
 import type { DayView } from "@/lib/week-data";
 import { buildPalette } from "@/lib/palette";
-import { PaletteStrip, Spinner } from "@/components/ui";
+import { PaletteStrip, Spinner, ZoomableImage } from "@/components/ui";
 
 export type DayGenState = "idle" | "generating" | "error";
 
@@ -14,6 +14,7 @@ export default function DayCard({
   genState,
   genError,
   onOpenPicker,
+  onOpenLookPicker,
   onRemoveItem,
   onNoteChange,
   onRegenerate,
@@ -23,6 +24,7 @@ export default function DayCard({
   genState: DayGenState;
   genError?: string;
   onOpenPicker: () => void;
+  onOpenLookPicker: () => void;
   onRemoveItem: (id: string) => void;
   onNoteChange: (note: string) => void;
   onRegenerate: () => void;
@@ -58,8 +60,8 @@ export default function DayCard({
         {palette.length > 0 && <PaletteStrip palette={palette} size={14} />}
       </div>
 
-      {/* Generated preview */}
-      <div className="relative aspect-[3/4] bg-[#f4efe8]">
+      {/* Generated preview — 2:3 matches the generated image so the full figure fits. */}
+      <div className="relative aspect-[2/3] bg-[#1a1a17]">
         {genState === "generating" ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted">
             <div className="shimmer absolute inset-0" />
@@ -68,11 +70,10 @@ export default function DayCard({
           </div>
         ) : day.generated_image_url ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={day.generated_image_url} alt="Generated outfit" className="h-full w-full object-contain" />
+            <ZoomableImage src={day.generated_image_url} alt="Generated outfit" className="h-full w-full object-contain" />
             <button
               onClick={onRegenerate}
-              className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-xs font-medium text-white hover:bg-black/80"
+              className="absolute bottom-2 right-2 z-10 rounded-none bg-black/60 px-2.5 py-1 text-xs font-medium text-white hover:bg-black/80"
               title="Regenerate this outfit"
             >
               ↻ Regenerate
@@ -97,7 +98,7 @@ export default function DayCard({
       {/* Selected item thumbnails */}
       <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
         {items.map((item) => (
-          <div key={item.id} className="group relative h-11 w-11 overflow-hidden rounded-lg border border-border bg-[#f4efe8]">
+          <div key={item.id} className="group relative h-11 w-11 overflow-hidden rounded-lg border border-border bg-[#1a1a17]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-0.5" />
             <button
@@ -115,6 +116,14 @@ export default function DayCard({
           aria-label="Add items"
         >
           +
+        </button>
+        <button
+          onClick={onOpenLookPicker}
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border text-base text-muted hover:border-accent hover:text-accent"
+          aria-label="Use a saved look"
+          title="Use a saved look"
+        >
+          ✨
         </button>
       </div>
 

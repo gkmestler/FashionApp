@@ -19,19 +19,19 @@ export default function Home() {
           </div>
 
           {/* The soft view toggle — no auth, just swaps what's on screen. */}
-          <div className="flex rounded-full border border-border bg-surface p-0.5 text-sm">
+          <div className="flex rounded-none border border-border bg-surface p-0.5 text-sm">
             <button
               onClick={() => setView("stylist")}
-              className={`rounded-full px-3.5 py-1.5 font-medium transition ${
-                view === "stylist" ? "bg-accent text-white" : "text-muted hover:text-foreground"
+              className={`rounded-none px-3.5 py-1.5 font-medium transition ${
+                view === "stylist" ? "bg-accent text-black" : "text-muted hover:text-foreground"
               }`}
             >
               Stylist
             </button>
             <button
               onClick={() => setView("my")}
-              className={`rounded-full px-3.5 py-1.5 font-medium transition ${
-                view === "my" ? "bg-accent text-white" : "text-muted hover:text-foreground"
+              className={`rounded-none px-3.5 py-1.5 font-medium transition ${
+                view === "my" ? "bg-accent text-black" : "text-muted hover:text-foreground"
               }`}
             >
               My view

@@ -67,7 +67,7 @@ export default function MyView() {
         <div className="flex items-center gap-1">
           <button
             onClick={() => setWeekStart((w) => addWeeks(w, -1))}
-            className="rounded-full border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-accent-soft"
+            className="rounded-none border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-accent-soft"
             aria-label="Previous week"
           >
             ‹
@@ -78,7 +78,7 @@ export default function MyView() {
           </div>
           <button
             onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-            className="rounded-full border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-accent-soft"
+            className="rounded-none border border-border bg-surface px-2.5 py-1.5 text-sm hover:bg-accent-soft"
             aria-label="Next week"
           >
             ›

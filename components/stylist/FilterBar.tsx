@@ -36,14 +36,14 @@ export default function FilterBar({
           value={filters.q}
           onChange={(e) => set({ q: e.target.value })}
           placeholder="Search by name…"
-          className="w-full rounded-full border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-accent"
+          className="w-full rounded-none border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-accent"
         />
       </div>
 
       <select
         value={filters.category}
         onChange={(e) => set({ category: e.target.value })}
-        className="rounded-full border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+        className="rounded-none border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
       >
         <option value="">All categories</option>
         {CATEGORIES.map((c) => (
@@ -57,7 +57,7 @@ export default function FilterBar({
         <select
           value={filters.status}
           onChange={(e) => set({ status: e.target.value })}
-          className="rounded-full border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+          className="rounded-none border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
         >
           <option value="">All statuses</option>
           <option value="active">Active</option>
@@ -70,13 +70,13 @@ export default function FilterBar({
         value={filters.tag}
         onChange={(e) => set({ tag: e.target.value })}
         placeholder="tag"
-        className="w-24 rounded-full border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+        className="w-24 rounded-none border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
       />
 
       {(filters.q || filters.category || filters.status || filters.tag) && (
         <button
           onClick={() => onChange(EMPTY_FILTERS)}
-          className="rounded-full px-3 py-2 text-sm text-muted hover:text-foreground"
+          className="rounded-none px-3 py-2 text-sm text-muted hover:text-foreground"
         >
           Clear
         </button>

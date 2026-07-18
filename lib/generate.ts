@@ -1,7 +1,8 @@
 import { getServiceSupabase } from "./supabase/server";
 import { computeOutfitHash } from "./outfit-hash";
 import { uploadToBucket, fetchImageBuffer, BUCKETS } from "./storage";
-import { generateOutfitImage } from "./providers/image-generation";
+import { toPngBuffer, padToAspect } from "./image";
+import { generateOutfitImage, IMAGE_DIMENSIONS } from "./providers/image-generation";
 import { buildPalette } from "./palette";
 import { ClothingItem, PaletteEntry } from "./types";
 
@@ -63,26 +64,35 @@ export async function generateForItems(
     throw new Error("No active mannequin base image. Upload one in Stylist settings first.");
   }
 
-  // 3. The selected clothing items (real photos + colors for the palette).
+  // 3. The selected clothing items (real photos + name/colors/tags for the
+  // prompt, colors also feed the palette).
   const { data: itemsData, error: itemsError } = await supabase
     .from("clothing_items")
-    .select("id, name, category, colors, image_url")
+    .select("id, name, category, colors, tags, image_url")
     .in("id", cleanIds);
 
   if (itemsError) throw new Error(itemsError.message);
   const items = (itemsData ?? []) as Pick<
     ClothingItem,
-    "id" | "name" | "category" | "colors" | "image_url"
+    "id" | "name" | "category" | "colors" | "tags" | "image_url"
   >[];
   if (items.length === 0) {
     throw new Error("Selected items no longer exist.");
   }
 
-  // 4. Fetch bytes for the base + item photos.
-  const mannequinBuffer = await fetchImageBuffer(mannequin.base_image_url);
+  // 4. Fetch bytes for the base + item photos and normalize every one to PNG.
+  // The image-edit endpoint reliably accepts PNG but rejects some JPEGs, so we
+  // convert here as a safety net (covers items uploaded before PNG-on-upload).
+  // Pad the base to the model's output aspect ratio so the full figure (head to
+  // feet) survives generation instead of being center-cropped to fit.
+  const mannequinBuffer = await padToAspect(
+    await fetchImageBuffer(mannequin.base_image_url),
+    IMAGE_DIMENSIONS.width,
+    IMAGE_DIMENSIONS.height,
+  );
   const itemImages = await Promise.all(
     items.map(async (it) => ({
-      buffer: await fetchImageBuffer(it.image_url),
+      buffer: await toPngBuffer(await fetchImageBuffer(it.image_url)),
       contentType: "image/png",
     })),
   );
@@ -91,7 +101,12 @@ export async function generateForItems(
   const generated = await generateOutfitImage({
     mannequinBase: { buffer: mannequinBuffer, contentType: "image/png" },
     itemImages,
-    items: items.map((i) => ({ name: i.name, category: i.category })),
+    items: items.map((i) => ({
+      name: i.name,
+      category: i.category,
+      colors: i.colors ?? [],
+      tags: i.tags ?? [],
+    })),
   });
 
   // 6. Store the image.

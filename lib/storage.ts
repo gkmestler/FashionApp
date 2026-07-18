@@ -37,6 +37,26 @@ export async function uploadToBucket(
 }
 
 /**
+ * Best-effort delete of a stored object given its public URL. Public URLs look
+ * like `.../storage/v1/object/public/<bucket>/<path>`, so we pull the segment
+ * after the bucket name and hand it to the storage API. Never throws — cleaning
+ * up a stray file should not fail the request that owns the DB row.
+ */
+export async function removeFromBucketByUrl(bucket: BucketName, url: string): Promise<void> {
+  try {
+    const marker = `/${bucket}/`;
+    const idx = url.indexOf(marker);
+    if (idx === -1) return;
+    const path = url.slice(idx + marker.length).split("?")[0];
+    if (!path) return;
+    const supabase = getServiceSupabase();
+    await supabase.storage.from(bucket).remove([decodeURIComponent(path)]);
+  } catch {
+    /* swallow — storage cleanup is best-effort */
+  }
+}
+
+/**
  * Fetch the bytes behind a stored public URL (used to pass item photos as
  * reference images to the generation endpoint).
  */

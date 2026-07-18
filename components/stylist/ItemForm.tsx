@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CATEGORIES, STATUSES, Category, ItemStatus } from "@/lib/types";
-import { ColorDots, Button } from "@/components/ui";
+import { ColorSwatchPicker, Button, ZoomableImage } from "@/components/ui";
 
 export interface ItemFormValues {
   name: string;
@@ -46,6 +46,12 @@ export default function ItemForm({
     if (v && !colors.includes(v)) setColors([...colors, v]);
     setColorInput("");
   };
+  const addPickedColor = (hex: string) => {
+    if (!colors.includes(hex)) setColors([...colors, hex]);
+  };
+  const changeColor = (index: number, next: string) => {
+    setColors(colors.map((c, i) => (i === index ? next : c)));
+  };
   const addTag = () => {
     const v = tagInput.trim();
     if (v && !tags.includes(v)) setTags([...tags, v]);
@@ -56,14 +62,13 @@ export default function ItemForm({
     <div className="flex flex-col gap-4">
       <div className="flex gap-4">
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <ZoomableImage
             src={imageUrl}
             alt={name}
-            className="h-28 w-28 shrink-0 rounded-xl border border-border bg-[#f4efe8] object-contain p-1"
+            className="h-28 w-28 shrink-0 rounded-xl border border-border bg-[#1a1a17] object-contain p-1"
           />
         ) : (
-          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl border border-border bg-[#f4efe8] text-xs text-muted">
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl border border-border bg-[#1a1a17] text-xs text-muted">
             no image
           </div>
         )}
@@ -94,29 +99,34 @@ export default function ItemForm({
       <div>
         <label className="mb-1 block text-xs font-medium text-muted">Colors</label>
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          {colors.map((c) => (
+          {colors.map((c, i) => (
             <span
-              key={c}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2 py-1 text-xs"
+              key={`${c}-${i}`}
+              className="inline-flex items-center gap-1.5 rounded-none border border-border bg-surface py-1 pl-1.5 pr-2 text-xs"
             >
-              <span
-                className="h-3 w-3 rounded-full border border-black/10"
-                style={{ backgroundColor: c.startsWith("#") ? c : undefined }}
+              {/* Click the swatch to change this color; the actual color always shows. */}
+              <ColorSwatchPicker
+                value={c}
+                size={14}
+                title={`Change ${c}`}
+                onChange={(hex) => changeColor(i, hex)}
               />
               {c}
-              <button onClick={() => setColors(colors.filter((x) => x !== c))} className="text-muted hover:text-red-600">
+              <button onClick={() => setColors(colors.filter((_, x) => x !== i))} className="text-muted hover:text-red-600">
                 ×
               </button>
             </span>
           ))}
-          {colors.length === 0 && <ColorDots colors={colors} />}
+          {colors.length === 0 && <span className="text-xs text-muted">No colors yet</span>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {/* Pick a color visually, or type a name/hex below. */}
+          <ColorSwatchPicker value={colorInput || "#808080"} size={34} title="Pick a color to add" onChange={addPickedColor} />
           <input
             value={colorInput}
             onChange={(e) => setColorInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addColor())}
-            placeholder="#1b2a4a or navy"
+            placeholder="Name it (navy) or pick / paste #1b2a4a"
             className="flex-1 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent"
           />
           <Button variant="outline" onClick={addColor}>
@@ -132,7 +142,7 @@ export default function ItemForm({
           {tags.map((t) => (
             <span
               key={t}
-              className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-1 text-xs text-foreground"
+              className="inline-flex items-center gap-1.5 rounded-none bg-accent-soft px-2.5 py-1 text-xs text-foreground"
             >
               {t}
               <button onClick={() => setTags(tags.filter((x) => x !== t))} className="text-muted hover:text-red-600">
@@ -163,8 +173,8 @@ export default function ItemForm({
               <button
                 key={s}
                 onClick={() => setStatus(s)}
-                className={`rounded-full border px-3 py-1.5 text-xs capitalize transition ${
-                  status === s ? "border-accent bg-accent text-white" : "border-border bg-surface text-muted"
+                className={`rounded-none border px-3 py-1.5 text-xs capitalize transition ${
+                  status === s ? "border-accent bg-accent text-black" : "border-border bg-surface text-muted"
                 }`}
               >
                 {s}

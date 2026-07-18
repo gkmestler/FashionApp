@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { removeBackground } from "@/lib/providers/background-removal";
 import { autoTagImage } from "@/lib/providers/auto-tag";
 import { uploadToBucket, BUCKETS } from "@/lib/storage";
+import { toPngBuffer } from "@/lib/image";
 import { ItemDraft } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -47,17 +48,25 @@ export async function POST(req: NextRequest) {
         originalExt,
       );
 
-      // 2. background removal (never blocks — falls back to original)
+      // 2. background removal (never blocks — falls back to original), then
+      //    normalize to PNG so the item photo is always in a format the image
+      //    model accepts. If conversion somehow fails, fall back to bg bytes.
       const bg = await removeBackground(originalBuffer, originalType);
-      const image_url = await uploadToBucket(
-        BUCKETS.itemPhotos,
-        bg.buffer,
-        bg.contentType,
-        bg.ext,
-      );
+      let photoBuffer: Buffer = bg.buffer;
+      let photoType = bg.contentType;
+      let photoExt = bg.ext;
+      try {
+        photoBuffer = await toPngBuffer(bg.buffer);
+        photoType = "image/png";
+        photoExt = "png";
+      } catch (convErr) {
+        console.error("[upload] PNG conversion failed, storing original bytes:", convErr);
+      }
+
+      const image_url = await uploadToBucket(BUCKETS.itemPhotos, photoBuffer, photoType, photoExt);
 
       // 3. auto-tag (defensive; falls back to sane defaults)
-      const tagged = await autoTagImage(bg.buffer, bg.contentType);
+      const tagged = await autoTagImage(photoBuffer, photoType);
 
       drafts.push({
         ...tagged,

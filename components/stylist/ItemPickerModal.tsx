@@ -72,12 +72,12 @@ export default function ItemPickerModal({
                     selected ? "border-accent" : "border-transparent hover:border-border"
                   }`}
                 >
-                  <div className="aspect-square bg-[#f4efe8]">
+                  <div className="aspect-square bg-[#1a1a17]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-1.5" />
                   </div>
                   {selected && (
-                    <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white">
+                    <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-none bg-accent text-black">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                         <path d="M20 6 9 17l-5-5" />
                       </svg>

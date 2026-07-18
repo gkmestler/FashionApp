@@ -50,6 +50,59 @@ export function toHex(color: string): string {
 }
 
 /**
+ * Pick the studio backdrop (white / grey / black) that best contrasts an
+ * outfit, so the clothing stays clearly visible. Based on the average lightness
+ * of the outfit's colors: dark outfit → white, light outfit → black, mixed or
+ * unknown → neutral grey.
+ */
+export function suggestBackground(items: Pick<ClothingItem, "colors">[]): string {
+  const lums: number[] = [];
+  for (const item of items) {
+    for (const color of item.colors || []) {
+      const [r, g, b] = hexToRgb(toHex(color));
+      lums.push(0.2126 * r + 0.7152 * g + 0.0722 * b); // 0..255
+    }
+  }
+  if (lums.length === 0) return "neutral medium grey";
+  const avg = lums.reduce((a, b) => a + b, 0) / lums.length;
+  if (avg < 85) return "clean white";
+  if (avg > 170) return "solid black";
+  return "neutral medium grey";
+}
+
+/**
+ * Turn a color value into a readable word for prompts. If it's already a name
+ * (e.g. "olive"), return it as-is; if it's a hex code, return the nearest known
+ * color name so the image model gets "olive" rather than "#556b2f".
+ */
+export function colorName(color: string): string {
+  const c = color.trim().toLowerCase();
+  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(c)) return c; // already a name
+
+  const [r, g, b] = hexToRgb(toHex(c));
+  let best = c;
+  let bestDist = Infinity;
+  for (const [name, hex] of Object.entries(NAMED_COLORS)) {
+    const [nr, ng, nb] = hexToRgb(hex);
+    const dist = (r - nr) ** 2 + (g - ng) ** 2 + (b - nb) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = name;
+    }
+  }
+  return best;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.slice(0, 2), 16),
+    parseInt(h.slice(2, 4), 16),
+    parseInt(h.slice(4, 6), 16),
+  ];
+}
+
+/**
  * Build a per-outfit palette from the REAL item photos' auto-tagged colors
  * (accurate to the actual clothes, not the generated image). De-dupes by hex
  * and caps the strip length.

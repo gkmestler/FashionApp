@@ -4,12 +4,14 @@ import { useState } from "react";
 import UploadPanel from "./UploadPanel";
 import Wardrobe from "./Wardrobe";
 import WeekBuilder from "./WeekBuilder";
+import StyleGallery from "./StyleGallery";
 import MannequinSettings from "./MannequinSettings";
 
-type Tab = "week" | "wardrobe" | "settings";
+type Tab = "week" | "looks" | "wardrobe" | "settings";
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: "week", label: "Week", icon: "📅" },
+  { key: "looks", label: "Looks", icon: "✨" },
   { key: "wardrobe", label: "Wardrobe", icon: "👕" },
   { key: "settings", label: "Mannequin", icon: "🧍" },
 ];
@@ -22,13 +24,13 @@ export default function StylistView() {
 
   return (
     <div className="flex flex-col gap-5">
-      <nav className="flex gap-1 rounded-full border border-border bg-surface p-1 text-sm sm:w-fit">
+      <nav className="flex gap-1 rounded-none border border-border bg-surface p-1 text-sm sm:w-fit">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-1.5 font-medium transition sm:flex-none ${
-              tab === t.key ? "bg-accent text-white" : "text-muted hover:text-foreground"
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-none px-4 py-1.5 font-medium transition sm:flex-none ${
+              tab === t.key ? "bg-accent text-black" : "text-muted hover:text-foreground"
             }`}
           >
             <span>{t.icon}</span>
@@ -38,6 +40,8 @@ export default function StylistView() {
       </nav>
 
       {tab === "week" && <WeekBuilder refreshKey={refreshKey} />}
+
+      {tab === "looks" && <StyleGallery refreshKey={refreshKey} />}
 
       {tab === "wardrobe" && (
         <div className="flex flex-col gap-6">

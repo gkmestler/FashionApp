@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getMannequin, uploadMannequin } from "@/lib/client-api";
-import { Button, Spinner } from "@/components/ui";
+import { Button, Spinner, ZoomableImage } from "@/components/ui";
 
 /**
  * Upload / set the active mannequin base image. This is the fixed base passed to
@@ -58,12 +58,11 @@ export default function MannequinSettings({ onChange }: { onChange?: () => void 
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <div className="mt-4 flex items-center gap-4">
-        <div className="flex h-40 w-32 items-center justify-center overflow-hidden rounded-xl border border-border bg-[#f4efe8]">
+        <div className="flex h-40 w-32 items-center justify-center overflow-hidden rounded-xl border border-border bg-[#1a1a17]">
           {loading ? (
             <Spinner className="h-5 w-5 text-muted" />
           ) : current ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={current} alt="Mannequin base" className="h-full w-full object-contain" />
+            <ZoomableImage src={current} alt="Mannequin base" className="h-full w-full object-contain" />
           ) : (
             <span className="px-2 text-center text-xs text-muted">No base set</span>
           )}
