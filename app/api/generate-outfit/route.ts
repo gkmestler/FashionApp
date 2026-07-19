@@ -5,9 +5,9 @@ export const runtime = "nodejs";
 // Image generation is slow (30–60s+). Bump this on a plan that allows it.
 export const maxDuration = 300;
 
-// POST /api/generate-outfit  { item_ids: string[], force?: boolean }
+// POST /api/generate-outfit  { item_ids: string[], force?: boolean, note?: string }
 export async function POST(req: NextRequest) {
-  let body: { item_ids?: string[]; force?: boolean };
+  let body: { item_ids?: string[]; force?: boolean; note?: string };
   try {
     body = await req.json();
   } catch {
@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await generateForItems(body.item_ids, { force: !!body.force });
+    const result = await generateForItems(body.item_ids, {
+      force: !!body.force,
+      note: typeof body.note === "string" ? body.note : undefined,
+    });
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

@@ -114,11 +114,15 @@ export interface GenResult {
   cached: boolean;
 }
 
-export async function generateOutfit(itemIds: string[], force = false): Promise<GenResult> {
+export async function generateOutfit(
+  itemIds: string[],
+  force = false,
+  note?: string,
+): Promise<GenResult> {
   const res = await fetch("/api/generate-outfit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ item_ids: itemIds, force }),
+    body: JSON.stringify({ item_ids: itemIds, force, note }),
   });
   return jsonOrThrow<GenResult>(res);
 }
@@ -133,4 +137,21 @@ export async function listOutfits(): Promise<GeneratedOutfit[]> {
 export async function deleteOutfit(id: string): Promise<void> {
   const res = await fetch(`/api/outfits/${id}`, { method: "DELETE" });
   await jsonOrThrow(res);
+}
+
+/**
+ * Update a saved look: change its note, its items, and/or force a regenerate.
+ * Any item change (or regenerate:true) rebuilds the image and can take a while.
+ */
+export async function updateOutfit(
+  id: string,
+  patch: { note?: string; item_ids?: string[]; regenerate?: boolean },
+): Promise<GeneratedOutfit> {
+  const res = await fetch(`/api/outfits/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await jsonOrThrow<{ outfit: GeneratedOutfit }>(res);
+  return data.outfit;
 }

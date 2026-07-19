@@ -8,7 +8,7 @@ export async function GET() {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("generated_outfits")
-    .select("id, outfit_hash, item_ids, image_url, palette, created_at")
+    .select("id, outfit_hash, item_ids, image_url, palette, note, created_at")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

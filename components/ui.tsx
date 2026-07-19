@@ -3,6 +3,7 @@
 import { PaletteEntry } from "@/lib/types";
 import { toHex } from "@/lib/palette";
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function PaletteStrip({
   palette,
@@ -62,6 +63,30 @@ export function ColorSwatchPicker({
   title?: string;
 }) {
   const hex = toHex(value);
+  const ref = useRef<HTMLInputElement>(null);
+  // Keep the latest onChange without rebinding the native listener each render.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+
+  // Commit on the native `change` event (fires once, when the user confirms and
+  // the OS picker closes) rather than React's onChange, which maps to the DOM
+  // `input` event and fires continuously for every color the cursor passes over
+  // — that live firing is what made it "grab" every color mid-scroll.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const handler = () => onChangeRef.current(el.value);
+    el.addEventListener("change", handler);
+    return () => el.removeEventListener("change", handler);
+  }, []);
+
+  // Reflect external changes to the value onto the (uncontrolled) input.
+  useEffect(() => {
+    if (ref.current && ref.current.value !== hex) ref.current.value = hex;
+  }, [hex]);
+
   return (
     <span
       className="relative inline-block shrink-0 align-middle"
@@ -73,9 +98,9 @@ export function ColorSwatchPicker({
         style={{ backgroundColor: hex }}
       />
       <input
+        ref={ref}
         type="color"
-        value={hex}
-        onChange={(e) => onChange(e.target.value)}
+        defaultValue={hex}
         aria-label={title ?? "Pick a color"}
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       />
@@ -169,6 +194,69 @@ export function ZoomableImage({
       />
       {open && <Lightbox src={src} alt={alt} onClose={() => setOpen(false)} />}
     </>
+  );
+}
+
+/**
+ * An image that opens full-screen on click — no zoom controls, just the photo.
+ * Use this inside animated cards: the overlay renders through a portal so an
+ * ancestor `transform` (e.g. `.animate-flip-in`, which keeps its transform via
+ * `animation-fill-mode: both`) can't become the containing block for the
+ * `fixed` overlay and trap it inside the card.
+ */
+export function OpenableImage({
+  src,
+  alt = "",
+  className = "",
+}: {
+  src: string;
+  alt?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onClick={() => setOpen(true)}
+        className={`cursor-zoom-in ${className}`}
+      />
+      {open && <FullScreenImage src={src} alt={alt} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function FullScreenImage({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Only ever rendered in response to a click, so `document` is always there.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <button
+        className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center border border-white/20 bg-black/50 text-lg text-white hover:bg-white/15"
+        onClick={onClose}
+        aria-label="Close"
+        title="Close"
+      >
+        ✕
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[90vh] max-w-[92vw] object-contain"
+      />
+    </div>,
+    document.body,
   );
 }
 

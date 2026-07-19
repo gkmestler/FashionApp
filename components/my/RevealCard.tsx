@@ -2,7 +2,7 @@
 
 import { ClothingItem, DAY_NAMES, DAY_SHORT } from "@/lib/types";
 import type { DayView } from "@/lib/week-data";
-import { PaletteStrip, ZoomableImage } from "@/components/ui";
+import { OpenableImage, PaletteStrip } from "@/components/ui";
 
 /**
  * A single day in My view. Starts "wrapped"; tapping reveals the mannequin
@@ -55,7 +55,7 @@ export default function RevealCard({
       </div>
 
       <div className="animate-flip-in mt-2 aspect-[2/3] bg-[#1a1a17]">
-        <ZoomableImage src={day.generated_image_url!} alt="Today's outfit" className="h-full w-full object-contain" />
+        <OpenableImage src={day.generated_image_url!} alt="Today's outfit" className="h-full w-full object-contain" />
       </div>
 
       <div className="animate-fade-up flex flex-col gap-2.5 p-4">

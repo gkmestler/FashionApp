@@ -2,9 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ClothingItem, GeneratedOutfit } from "@/lib/types";
-import { listItems, listOutfits, deleteOutfit, generateOutfit } from "@/lib/client-api";
+import {
+  listItems,
+  listOutfits,
+  deleteOutfit,
+  generateOutfit,
+  updateOutfit,
+} from "@/lib/client-api";
 import ItemPickerModal from "./ItemPickerModal";
-import { PaletteStrip, ZoomableImage, EmptyState, Spinner, Button } from "@/components/ui";
+import LookCard from "./LookCard";
+import { EmptyState, Spinner, Button } from "@/components/ui";
+
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = new Set(a);
+  return b.every((x) => sa.has(x));
+}
 
 /**
  * The "Looks" tab: every outfit the stylist has ever generated, saved as a
@@ -22,6 +35,10 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Per-look busy state (regenerating / editing items) + item-editing flow.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingLookId, setEditingLookId] = useState<string | null>(null);
+  const [editSelectedIds, setEditSelectedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +77,63 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  }
+
+  // Save a look's note (no image change). Optimistic; no reload needed.
+  async function saveNote(outfit: GeneratedOutfit, note: string) {
+    setOutfits((prev) => prev.map((o) => (o.id === outfit.id ? { ...o, note } : o)));
+    try {
+      await updateOutfit(outfit.id, { note });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save note");
+      load();
+    }
+  }
+
+  // Regenerate a look's image (uses its saved note). Slow — show per-card spinner.
+  async function regenerate(outfit: GeneratedOutfit) {
+    setBusyId(outfit.id);
+    setError(null);
+    try {
+      await updateOutfit(outfit.id, { regenerate: true });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Regeneration failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function startEditItems(outfit: GeneratedOutfit) {
+    setEditingLookId(outfit.id);
+    setEditSelectedIds(outfit.item_ids);
+  }
+
+  function toggleEditItem(id: string) {
+    setEditSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  // Close the item picker in edit mode; if the set changed, rebuild the look.
+  async function finishEditItems() {
+    const lookId = editingLookId;
+    const original = outfits.find((o) => o.id === lookId);
+    const nextIds = editSelectedIds;
+    setEditingLookId(null);
+    if (!lookId || !original) return;
+    if (nextIds.length === 0 || sameSet(original.item_ids, nextIds)) return;
+
+    setBusyId(lookId);
+    setError(null);
+    try {
+      await updateOutfit(lookId, { item_ids: nextIds });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update look");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function generateLook() {
@@ -165,67 +239,27 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
         />
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {outfits.map((outfit) => {
-            const items = resolveItems(outfit);
-            return (
-              <div
-                key={outfit.id}
-                className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
-              >
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  {outfit.palette?.length > 0 ? (
-                    <PaletteStrip palette={outfit.palette} size={13} />
-                  ) : (
-                    <span />
-                  )}
-                  <button
-                    onClick={() => remove(outfit)}
-                    disabled={deletingId === outfit.id}
-                    className="rounded-none p-1 text-muted transition hover:text-red-600 disabled:opacity-50"
-                    aria-label="Delete look"
-                    title="Delete look"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                    </svg>
-                  </button>
-                </div>
-
-                <div className="relative aspect-[2/3] bg-[#1a1a17]">
-                  <ZoomableImage
-                    src={outfit.image_url}
-                    alt="Saved look"
-                    className="h-full w-full object-contain"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
-                  {items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="h-9 w-9 overflow-hidden rounded-lg border border-border bg-[#1a1a17]"
-                      title={item.name}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-0.5" />
-                    </div>
-                  ))}
-                  {items.length === 0 && (
-                    <span className="py-1 text-[11px] text-muted">Items no longer in wardrobe</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {outfits.map((outfit) => (
+            <LookCard
+              key={outfit.id}
+              outfit={outfit}
+              items={resolveItems(outfit)}
+              busy={busyId === outfit.id || deletingId === outfit.id}
+              onNoteSave={(note) => saveNote(outfit, note)}
+              onRegenerate={() => regenerate(outfit)}
+              onEditItems={() => startEditItems(outfit)}
+              onDelete={() => remove(outfit)}
+            />
+          ))}
         </div>
       )}
 
       <ItemPickerModal
-        open={picking}
-        onClose={() => setPicking(false)}
-        dayLabel="new look"
-        selectedIds={selectedIds}
-        onToggle={toggleSelected}
+        open={picking || editingLookId !== null}
+        onClose={editingLookId !== null ? finishEditItems : () => setPicking(false)}
+        dayLabel={editingLookId !== null ? "edit look" : "new look"}
+        selectedIds={editingLookId !== null ? editSelectedIds : selectedIds}
+        onToggle={editingLookId !== null ? toggleEditItem : toggleSelected}
       />
     </div>
   );

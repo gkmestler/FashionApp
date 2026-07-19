@@ -35,8 +35,14 @@ create table if not exists generated_outfits (
   item_ids uuid[] not null default '{}',
   image_url text not null,
   palette jsonb not null default '[]',
+  note text,
   created_at timestamptz not null default now()
 );
+
+-- If you created generated_outfits before the "look note" feature, add the
+-- column to your existing database:
+--   alter table generated_outfits add column if not exists note text;
+alter table generated_outfits add column if not exists note text;
 
 create table if not exists week_plans (
   id uuid primary key default gen_random_uuid(),

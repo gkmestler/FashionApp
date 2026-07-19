@@ -16,6 +16,7 @@ export default function DayCard({
   onOpenPicker,
   onOpenLookPicker,
   onRemoveItem,
+  onClear,
   onNoteChange,
   onRegenerate,
 }: {
@@ -26,6 +27,7 @@ export default function DayCard({
   onOpenPicker: () => void;
   onOpenLookPicker: () => void;
   onRemoveItem: (id: string) => void;
+  onClear: () => void;
   onNoteChange: (note: string) => void;
   onRegenerate: () => void;
 }) {
@@ -57,7 +59,22 @@ export default function DayCard({
     <div className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5">
         <span className="text-sm font-semibold">{DAY_NAMES[day.day_of_week]}</span>
-        {palette.length > 0 && <PaletteStrip palette={palette} size={14} />}
+        <div className="flex items-center gap-2">
+          {palette.length > 0 && <PaletteStrip palette={palette} size={14} />}
+          {hasItems && (
+            <button
+              onClick={() => {
+                if (confirm(`Clear ${DAY_NAMES[day.day_of_week]}'s outfit? The saved look isn't deleted.`)) {
+                  onClear();
+                }
+              }}
+              className="text-xs text-muted hover:text-red-600"
+              title="Empty this day (keeps the saved look)"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Generated preview — 2:3 matches the generated image so the full figure fits. */}

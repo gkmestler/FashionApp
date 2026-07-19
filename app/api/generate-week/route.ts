@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const supabase = getServiceSupabase();
   const { data: days, error } = await supabase
     .from("day_outfits")
-    .select("id, day_of_week, item_ids")
+    .select("id, day_of_week, item_ids, note")
     .eq("week_plan_id", body.week_plan_id)
     .order("day_of_week", { ascending: true });
 
@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
   const target = (days ?? []).filter((d) => (d.item_ids?.length ?? 0) > 0);
 
   const settled = await Promise.allSettled(
-    target.map((d) => generateForItems(d.item_ids as string[])),
+    target.map((d) =>
+      generateForItems(d.item_ids as string[], { note: (d.note as string) ?? undefined }),
+    ),
   );
 
   const results = target.map((d, i) => {

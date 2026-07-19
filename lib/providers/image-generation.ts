@@ -38,7 +38,7 @@ export const IMAGE_DIMENSIONS: { width: number; height: number } = (() => {
  * pose/background/framing/lighting language is constant so the mannequin stays
  * consistent day to day.
  */
-export function buildPrompt(items: PromptItem[], background: string): string {
+export function buildPrompt(items: PromptItem[], background: string, note?: string): string {
   // One descriptive line per item: name, category, its true colors (as words),
   // and style tags. This text is what disambiguates a poorly-lit photo — e.g. an
   // olive sweater that photographed nearly black.
@@ -50,6 +50,8 @@ export function buildPrompt(items: PromptItem[], background: string): string {
     if (tags.length) parts.push(`style: ${tags.join(", ")}`);
     return `- ${parts.join("; ")}`;
   });
+
+  const trimmedNote = (note ?? "").trim();
 
   return [
     "Turn the FIRST reference image (a photo of one specific real person) into a clean, full-body studio outfit shot of that same person.",
@@ -65,12 +67,19 @@ export function buildPrompt(items: PromptItem[], background: string): string {
     lines.join("\n"),
     "Use those reference photos for each item's exact shape, cut, fit, pattern, and details.",
     "Use each item's stated color and name to determine its TRUE color: if a reference photo looks dark, dim, or washed out, trust the stated color/name over the photo's apparent color (an item named or colored 'olive' must appear olive, not black).",
+    "Keep every shirt and top UNTUCKED with a natural hem, unless the styling note explicitly says to tuck it in.",
+    // Optional stylist note — only affects the render when it's about the look.
+    trimmedNote
+      ? `Styling note from the stylist: "${trimmedNote}". Apply this note ONLY where it changes how the outfit looks or is worn (e.g. tucked or untucked, sleeves rolled, buttons open or closed, layering, jacket on or off, collar up). If the note is not about the outfit's appearance, ignore it completely and change nothing.`
+      : "",
 
     // --- Fixed framing / background (kept constant for a consistent series) ---
     `Replace the original background entirely with a solid, seamless ${background} studio backdrop with no scenery, props, shadows on the wall, or gradients.`,
     "Composition, framing, camera distance, and lighting must be identical every time: a straight-on eye-level full-body fashion-lookbook shot, the person centered, shown from the top of the head down to the feet with even margins on all sides. Do not crop or cut off the head, hair, hands, or feet. Soft, even, neutral studio lighting.",
     "Do not add any extra clothing, accessories, text, logos, or watermark.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function unique(arr: string[]): string[] {
@@ -87,6 +96,7 @@ export interface GenerationInput {
   mannequinBase: { buffer: Buffer; contentType: string };
   itemImages: { buffer: Buffer; contentType: string }[];
   items: PromptItem[];
+  note?: string; // the stylist's per-day note (applied only if it affects the look)
 }
 
 /**
@@ -113,7 +123,7 @@ export async function generateOutfitImage(input: GenerationInput): Promise<Buffe
   );
 
   const background = suggestBackground(input.items);
-  const prompt = buildPrompt(input.items, background);
+  const prompt = buildPrompt(input.items, background, input.note);
 
   // The image-edit endpoint accepts an array of images; base first, then refs.
   // input_fidelity=high boosts face/detail preservation, but ONLY the

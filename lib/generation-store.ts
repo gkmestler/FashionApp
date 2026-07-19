@@ -60,13 +60,14 @@ export function startGeneration(
   dayId: string,
   itemIds: string[],
   force: boolean,
+  note?: string,
 ): Promise<GenResult | null> {
   const existing = entries[dayId];
   if (existing?.status === "generating" && existing.promise) {
     return existing.promise;
   }
 
-  const promise = generateOutfit(itemIds, force)
+  const promise = generateOutfit(itemIds, force, note)
     .then((result) => {
       emit({ ...entries, [dayId]: { status: "done", result, promise } });
       return result;

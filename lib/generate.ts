@@ -23,7 +23,7 @@ export interface GenerateResult {
  */
 export async function generateForItems(
   itemIds: string[],
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; note?: string } = {},
 ): Promise<GenerateResult> {
   const supabase = getServiceSupabase();
 
@@ -107,6 +107,7 @@ export async function generateForItems(
       colors: i.colors ?? [],
       tags: i.tags ?? [],
     })),
+    note: opts.note,
   });
 
   // 6. Store the image.

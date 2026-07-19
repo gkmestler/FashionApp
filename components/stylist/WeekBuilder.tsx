@@ -123,6 +123,23 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
       });
   }
 
+  function clearDay(dayId: string) {
+    // Empty the day (item_ids -> []). The server nulls the outfit_hash; the
+    // generated_outfits row is never deleted, so the look is still reusable.
+    patchDayLocal(dayId, {
+      item_ids: [],
+      outfit_hash: null,
+      generated_image_url: null,
+      palette: [],
+    });
+    enqueueWrite(() => updateDay(dayId, { item_ids: [] }))
+      .then(() => loadWeek())
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to clear day");
+        loadWeek();
+      });
+  }
+
   function applyLook(dayId: string, outfit: GeneratedOutfit) {
     // Reuse a saved look: set the day to the outfit's items. The hash is
     // deterministic, so the cached image links immediately — patch it straight
@@ -162,8 +179,9 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
       return;
     }
     // Fire-and-forget into the store; it owns the promise so the generation
-    // continues (and stays visible) even if this component unmounts.
-    return startGeneration(dayId, day.item_ids, force);
+    // continues (and stays visible) even if this component unmounts. The note is
+    // passed so styling instructions (e.g. "tuck in the shirt") affect the render.
+    return startGeneration(dayId, day.item_ids, force, day.note ?? undefined);
   }
 
   async function generateWeek() {
@@ -184,7 +202,7 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
       targets.map(async (d) => {
         try {
           await enqueueWrite(() => updateDay(d.id, { item_ids: d.item_ids }));
-          await startGeneration(d.id, d.item_ids, false);
+          await startGeneration(d.id, d.item_ids, false, d.note ?? undefined);
         } catch {
           /* the day keeps its error state via the store */
         } finally {
@@ -300,6 +318,7 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
               onOpenPicker={() => setPickerDayId(day.id)}
               onOpenLookPicker={() => setLookPickerDayId(day.id)}
               onRemoveItem={(id) => toggleItem(day.id, id)}
+              onClear={() => clearDay(day.id)}
               onNoteChange={(note) => saveNote(day.id, note)}
               onRegenerate={() => generateDay(day.id, true)}
             />

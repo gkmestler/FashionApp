@@ -44,6 +44,7 @@ export interface GeneratedOutfit {
   item_ids: string[];
   image_url: string;
   palette: PaletteEntry[];
+  note: string | null;
   created_at: string;
 }
 
