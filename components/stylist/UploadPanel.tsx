@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { uploadFiles, createItem } from "@/lib/client-api";
-import { downscaleImage, isHeic } from "@/lib/downscale-image";
+import { downscaleImage, isHeic, UnreadableImageError } from "@/lib/downscale-image";
 import { ItemDraft } from "@/lib/types";
 import ItemForm, { ItemFormValues } from "./ItemForm";
 import { Button, Spinner } from "@/components/ui";
@@ -49,34 +49,52 @@ export default function UploadPanel({ onSaved }: { onSaved: () => void }) {
 
   async function handleFiles(files: FileList | File[]) {
     const all = Array.from(files);
+    const notes: string[] = [];
 
     // HEIC/HEIF (the iPhone default) can't be decoded in the browser, so we
     // can't shrink or upload them. Flag them specifically and upload the rest.
     const heic = all.filter(isHeic);
     if (heic.length > 0) {
       const names = heic.map((f) => f.name).filter(Boolean);
-      setNotice(
+      notes.push(
         `HEIC photos can't be uploaded${
-          names.length ? ` — skipped ${names.join(", ")}` : ""
-        }. iPhones save as HEIC by default. Fix it on the phone via Settings ▸ Camera ▸ Formats ▸ “Most Compatible” (saves new photos as JPG), or convert the file to JPG/PNG first. Screenshots and JPG/PNG images work fine.`,
+          names.length ? ` (${names.join(", ")})` : ""
+        }. iPhones save as HEIC by default — fix it via Settings ▸ Camera ▸ Formats ▸ “Most Compatible”, or convert to JPG/PNG first.`,
       );
-    } else {
-      setNotice(null);
     }
 
     const list = all.filter((f) => !isHeic(f) && f.type.startsWith("image/"));
-    if (list.length === 0) return;
+    if (list.length === 0) {
+      setNotice(notes.join(" ") || null);
+      return;
+    }
+
     setError(null);
     setUploading(true);
     try {
       // Shrink every photo in the browser first so the request fits under
       // Vercel's body limit (otherwise large phone/screenshot images 413).
-      const shrunk = await Promise.all(list.map((f) => downscaleImage(f)));
+      // A file that won't decode (empty, or a screenshot dragged from macOS's
+      // live preview thumbnail, which the OS deletes) is flagged, not uploaded.
+      const shrunk: File[] = [];
+      const unreadable: string[] = [];
+      const settled = await Promise.allSettled(list.map((f) => downscaleImage(f)));
+      settled.forEach((r, i) => {
+        if (r.status === "fulfilled") shrunk.push(r.value);
+        else if (r.reason instanceof UnreadableImageError) unreadable.push(list[i].name || "a photo");
+        else unreadable.push(list[i].name || "a photo");
+      });
+
+      if (unreadable.length > 0) {
+        notes.push(
+          `Couldn't read ${unreadable.join(", ")}. If it's a screenshot, save it to disk first, then upload the saved file — dragging the macOS screenshot preview thumbnail doesn't work because the file disappears too quickly.`,
+        );
+      }
+      setNotice(notes.join(" ") || null);
+
       // Upload in size-bounded batches; show drafts from each batch as it lands.
-      let uploadedAny = false;
       for (const chunk of chunkBySize(shrunk)) {
         const result = await uploadFiles(chunk);
-        uploadedAny = true;
         setDrafts((prev) => [
           ...result.map((d, i) => ({
             ...d,
@@ -85,7 +103,6 @@ export default function UploadPanel({ onSaved }: { onSaved: () => void }) {
           ...prev,
         ]);
       }
-      if (!uploadedAny) setError("Those files couldn't be read as images.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {

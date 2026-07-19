@@ -24,10 +24,18 @@ export function isHeic(file: File): boolean {
  * as JPEG (far smaller than PNG for photos/screenshots; background removal and
  * PNG normalization still happen server-side afterward).
  *
- * If the browser can't decode the file (e.g. HEIC/HEIF from some iPhones), we
- * return the original untouched so behavior is no worse than before — the server
- * will then either handle or reject it with a clear per-item error.
+ * Throws `UnreadableImageError` if the browser can't decode the file — e.g. an
+ * empty/zero-byte file, or a macOS screenshot dragged from its live preview
+ * thumbnail (the OS deletes that temp file moments later). Callers surface a
+ * specific message instead of uploading a doomed, blank image.
  */
+export class UnreadableImageError extends Error {
+  constructor(public fileName: string) {
+    super(`Couldn't read image: ${fileName}`);
+    this.name = "UnreadableImageError";
+  }
+}
+
 export async function downscaleImage(
   file: File,
   { maxEdge = 1600, quality = 0.82 }: { maxEdge?: number; quality?: number } = {},
@@ -35,13 +43,16 @@ export async function downscaleImage(
   // Not an image (or a format we shouldn't touch) — leave it alone.
   if (!file.type.startsWith("image/")) return file;
 
+  // A zero-byte file never decodes (common when a temp screenshot is gone).
+  if (file.size === 0) throw new UnreadableImageError(file.name || "a photo");
+
   let bitmap: ImageBitmap;
   try {
     // `imageOrientation: "from-image"` bakes in EXIF rotation so portrait phone
     // photos don't come out sideways.
     bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   } catch {
-    return file; // undecodable (e.g. HEIC) — hand the original to the server
+    throw new UnreadableImageError(file.name || "a photo");
   }
 
   try {

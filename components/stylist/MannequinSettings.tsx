@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getMannequin, uploadMannequin } from "@/lib/client-api";
-import { downscaleImage, isHeic } from "@/lib/downscale-image";
+import { downscaleImage, isHeic, UnreadableImageError } from "@/lib/downscale-image";
 import { Button, Spinner, ZoomableImage } from "@/components/ui";
 
 /**
@@ -50,7 +50,13 @@ export default function MannequinSettings({ onChange }: { onChange?: () => void 
       setCurrent(m.base_image_url);
       onChange?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      if (e instanceof UnreadableImageError) {
+        setError(
+          "Couldn't read that image. If it's a screenshot, save it to disk first and upload the saved file (dragging the macOS screenshot preview thumbnail doesn't work).",
+        );
+      } else {
+        setError(e instanceof Error ? e.message : "Upload failed");
+      }
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
