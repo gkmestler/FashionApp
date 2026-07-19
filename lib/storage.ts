@@ -23,7 +23,16 @@ export async function uploadToBucket(
   const supabase = getServiceSupabase();
   const path = `${randomUUID()}.${ext}`;
 
-  const { error } = await supabase.storage.from(bucket).upload(path, buffer, {
+  // Wrap the bytes in a Blob before handing them to supabase-js. If you pass a
+  // raw Node Buffer, storage-js sends it straight to fetch as the request body;
+  // on Vercel's runtime that Buffer gets stringified as UTF-8, which corrupts
+  // every byte >= 0x80 into the replacement character (turning the PNG into
+  // garbage that 200s but won't decode). A Blob forces storage-js down its
+  // FormData path, which is binary-safe on every runtime. `new Uint8Array` makes
+  // a tight copy so a pooled Buffer's backing store isn't over-read.
+  const blob = new Blob([new Uint8Array(buffer)], { type: contentType });
+
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
     contentType,
     upsert: false,
   });
