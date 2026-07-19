@@ -2,11 +2,36 @@
 
 import { useRef, useState } from "react";
 import { uploadFiles, createItem } from "@/lib/client-api";
+import { downscaleImage, isHeic } from "@/lib/downscale-image";
 import { ItemDraft } from "@/lib/types";
 import ItemForm, { ItemFormValues } from "./ItemForm";
 import { Button, Spinner } from "@/components/ui";
 
 type Draft = ItemDraft & { error?: string; _key: string };
+
+// Keep each upload request comfortably under Vercel's ~4.5 MB body limit.
+// Downscaled photos are usually 150–400 KB, so a 3.5 MB budget packs several
+// per request while leaving headroom for multipart overhead.
+const MAX_CHUNK_BYTES = 3.5 * 1024 * 1024;
+
+// Greedily pack files into groups whose combined size stays under the budget.
+// A single file bigger than the budget still goes out alone (best effort).
+function chunkBySize(files: File[]): File[][] {
+  const chunks: File[][] = [];
+  let current: File[] = [];
+  let size = 0;
+  for (const f of files) {
+    if (current.length > 0 && size + f.size > MAX_CHUNK_BYTES) {
+      chunks.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(f);
+    size += f.size;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
 
 /**
  * Upload flow: drop photos → server removes bg + auto-tags → a pre-filled
@@ -19,19 +44,48 @@ export default function UploadPanel({ onSaved }: { onSaved: () => void }) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
   async function handleFiles(files: FileList | File[]) {
-    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    const all = Array.from(files);
+
+    // HEIC/HEIF (the iPhone default) can't be decoded in the browser, so we
+    // can't shrink or upload them. Flag them specifically and upload the rest.
+    const heic = all.filter(isHeic);
+    if (heic.length > 0) {
+      const names = heic.map((f) => f.name).filter(Boolean);
+      setNotice(
+        `HEIC photos can't be uploaded${
+          names.length ? ` — skipped ${names.join(", ")}` : ""
+        }. iPhones save as HEIC by default. Fix it on the phone via Settings ▸ Camera ▸ Formats ▸ “Most Compatible” (saves new photos as JPG), or convert the file to JPG/PNG first. Screenshots and JPG/PNG images work fine.`,
+      );
+    } else {
+      setNotice(null);
+    }
+
+    const list = all.filter((f) => !isHeic(f) && f.type.startsWith("image/"));
     if (list.length === 0) return;
     setError(null);
     setUploading(true);
     try {
-      const result = await uploadFiles(list);
-      setDrafts((prev) => [
-        ...result.map((d, i) => ({ ...d, _key: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}` })),
-        ...prev,
-      ]);
+      // Shrink every photo in the browser first so the request fits under
+      // Vercel's body limit (otherwise large phone/screenshot images 413).
+      const shrunk = await Promise.all(list.map((f) => downscaleImage(f)));
+      // Upload in size-bounded batches; show drafts from each batch as it lands.
+      let uploadedAny = false;
+      for (const chunk of chunkBySize(shrunk)) {
+        const result = await uploadFiles(chunk);
+        uploadedAny = true;
+        setDrafts((prev) => [
+          ...result.map((d, i) => ({
+            ...d,
+            _key: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+          })),
+          ...prev,
+        ]);
+      }
+      if (!uploadedAny) setError("Those files couldn't be read as images.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -101,6 +155,19 @@ export default function UploadPanel({ onSaved }: { onSaved: () => void }) {
           </>
         )}
       </div>
+
+      {notice && (
+        <div className="flex items-start justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p>⚠️ {notice}</p>
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 text-amber-700 hover:text-amber-900"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

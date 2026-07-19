@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getMannequin, uploadMannequin } from "@/lib/client-api";
+import { downscaleImage, isHeic } from "@/lib/downscale-image";
 import { Button, Spinner, ZoomableImage } from "@/components/ui";
 
 /**
@@ -33,10 +34,19 @@ export default function MannequinSettings({ onChange }: { onChange?: () => void 
   }, []);
 
   async function handleFile(file: File) {
+    if (isHeic(file)) {
+      setError(
+        "HEIC photos can't be uploaded. iPhones save as HEIC by default — switch to JPG via Settings ▸ Camera ▸ Formats ▸ “Most Compatible”, or convert the file to JPG/PNG first.",
+      );
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
-      const m = await uploadMannequin(file);
+      // Shrink client-side first so the base image fits Vercel's body limit.
+      const shrunk = await downscaleImage(file);
+      const m = await uploadMannequin(shrunk);
       setCurrent(m.base_image_url);
       onChange?.();
     } catch (e) {
