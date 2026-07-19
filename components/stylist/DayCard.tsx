@@ -144,12 +144,22 @@ export default function DayCard({
         </button>
       </div>
 
-      {/* Note */}
+      {/* The Wearer's note — read-only context, not part of the prompt. */}
+      {day.client_note?.trim() && (
+        <div className="mx-3 mb-2 rounded-lg border-l-2 border-accent bg-accent-soft px-2.5 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-accent">
+            From {DAY_NAMES[day.day_of_week]}&apos;s plans
+          </div>
+          <p className="mt-0.5 text-xs text-foreground/80">{day.client_note}</p>
+        </div>
+      )}
+
+      {/* Stylist's own note */}
       <div className="px-3 pb-3">
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Note for the day…"
+          placeholder="Styling note (shapes the look)…"
           rows={2}
           className="w-full resize-none rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"
         />

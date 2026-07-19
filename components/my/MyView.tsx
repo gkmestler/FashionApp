@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ClothingItem } from "@/lib/types";
 import type { WeekView, DayView } from "@/lib/week-data";
-import { getWeek, listItems, revealDay } from "@/lib/client-api";
+import { getWeek, listItems, revealDay, updateDay } from "@/lib/client-api";
 import { currentWeekStart, addWeeks, weekLabel } from "@/lib/week";
 import RevealCard from "./RevealCard";
+import WeekNotes from "./WeekNotes";
 import { Spinner, EmptyState, Button } from "@/components/ui";
 
 export default function MyView() {
@@ -15,6 +16,9 @@ export default function MyView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const [noteError, setNoteError] = useState<string | null>(null);
+  // Serialize note writes so overlapping debounced saves can't land out of order.
+  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +62,20 @@ export default function MyView() {
     }
   }
 
+  function saveClientNote(dayId: string, clientNote: string) {
+    // Optimistic — the textarea already shows the new text; keep `view` in step
+    // so a later reload comparison doesn't re-fire the save.
+    setView((prev) =>
+      prev
+        ? { ...prev, days: prev.days.map((d) => (d.id === dayId ? { ...d, client_note: clientNote } : d)) }
+        : prev,
+    );
+    setNoteError(null);
+    writeChain.current = writeChain.current
+      .then(() => updateDay(dayId, { client_note: clientNote }))
+      .catch(() => setNoteError("Couldn't save that note — check your connection."));
+  }
+
   const resolveItems = (day: DayView): ClothingItem[] =>
     day.item_ids.map((id) => itemsMap.get(id)).filter((x): x is ClothingItem => !!x);
 
@@ -93,28 +111,36 @@ export default function MyView() {
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {noteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{noteError}</p>}
 
       {loading ? (
         <div className="flex justify-center py-16 text-muted">
           <Spinner className="h-5 w-5" />
         </div>
-      ) : revealable.length === 0 ? (
-        <EmptyState
-          title="No outfits yet this week"
-          subtitle="Your stylist hasn't generated this week's looks yet. Check back soon! 🎁"
-        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {view!.days.map((day) => (
-            <RevealCard
-              key={day.id}
-              day={day}
-              items={resolveItems(day)}
-              open={openIds.has(day.id)}
-              onReveal={() => revealOne(day)}
+        <>
+          {/* Always available, even on a week with no looks yet. */}
+          {view && <WeekNotes days={view.days} onNoteChange={saveClientNote} />}
+
+          {revealable.length === 0 ? (
+            <EmptyState
+              title="No outfits yet this week"
+              subtitle="Your stylist hasn't generated this week's looks yet. Check back soon! 🎁"
             />
-          ))}
-        </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {view!.days.map((day) => (
+                <RevealCard
+                  key={day.id}
+                  day={day}
+                  items={resolveItems(day)}
+                  open={openIds.has(day.id)}
+                  onReveal={() => revealOne(day)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

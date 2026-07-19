@@ -65,7 +65,10 @@ export interface DayOutfit {
   day_of_week: number; // 0..6 (Mon..Sun)
   item_ids: string[];
   outfit_hash: string | null;
+  /** The Stylist's styling note. Feeds the image-generation prompt. */
   note: string | null;
+  /** The Wearer's note to the Stylist (e.g. "dinner out"). Never feeds the prompt. */
+  client_note: string | null;
   revealed: boolean;
   created_at: string;
   updated_at: string;

@@ -86,7 +86,7 @@ export async function getWeek(weekStart?: string): Promise<WeekView> {
 
 export async function updateDay(
   dayId: string,
-  patch: { item_ids?: string[]; note?: string },
+  patch: { item_ids?: string[]; note?: string; client_note?: string },
 ): Promise<DayView> {
   const res = await fetch("/api/week", {
     method: "PATCH",

@@ -93,10 +93,10 @@ export async function loadWeekView(weekStart: string): Promise<WeekView> {
   return { week, days: dayViews };
 }
 
-/** Update a single day's item set and/or note. Recomputes the hash. */
+/** Update a single day's item set and/or notes. Recomputes the hash. */
 export async function updateDay(
   dayId: string,
-  patch: { item_ids?: string[]; note?: string },
+  patch: { item_ids?: string[]; note?: string; client_note?: string },
 ): Promise<DayOutfit> {
   const supabase = getServiceSupabase();
   const update: Record<string, unknown> = {};
@@ -108,6 +108,11 @@ export async function updateDay(
   }
   if (typeof patch.note === "string") {
     update.note = patch.note;
+  }
+  // The Wearer's note is display-only for the Stylist — deliberately kept out of
+  // the outfit hash and out of anything handed to the generation prompt.
+  if (typeof patch.client_note === "string") {
+    update.client_note = patch.client_note;
   }
 
   const { data, error } = await supabase

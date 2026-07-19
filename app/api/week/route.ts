@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/week  { day_id, item_ids?, note? } — update one day's outfit/note
+// PATCH /api/week  { day_id, item_ids?, note?, client_note? } — update one day
 export async function PATCH(req: NextRequest) {
-  let body: { day_id?: string; item_ids?: string[]; note?: string };
+  let body: { day_id?: string; item_ids?: string[]; note?: string; client_note?: string };
   try {
     body = await req.json();
   } catch {
@@ -50,7 +50,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "day_id is required" }, { status: 400 });
   }
   try {
-    const day = await updateDay(body.day_id, { item_ids: body.item_ids, note: body.note });
+    const day = await updateDay(body.day_id, {
+      item_ids: body.item_ids,
+      note: body.note,
+      client_note: body.client_note,
+    });
     return NextResponse.json({ day });
   } catch (err) {
     return NextResponse.json({ error: message(err) }, { status: 500 });

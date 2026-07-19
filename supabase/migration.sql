@@ -44,6 +44,11 @@ create table if not exists generated_outfits (
 --   alter table generated_outfits add column if not exists note text;
 alter table generated_outfits add column if not exists note text;
 
+-- If you created day_outfits before the "note from the Wearer" feature, add the
+-- column to your existing database:
+--   alter table day_outfits add column if not exists client_note text;
+alter table day_outfits add column if not exists client_note text;
+
 create table if not exists week_plans (
   id uuid primary key default gen_random_uuid(),
   week_start date not null unique,
@@ -56,7 +61,8 @@ create table if not exists day_outfits (
   day_of_week int not null check (day_of_week between 0 and 6),
   item_ids uuid[] not null default '{}',
   outfit_hash text,
-  note text,
+  note text,          -- the Stylist's styling note (feeds the generation prompt)
+  client_note text,   -- the Wearer's note to the Stylist (never feeds the prompt)
   revealed boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
