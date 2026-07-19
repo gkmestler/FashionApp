@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClothingItem, GeneratedOutfit } from "@/lib/types";
 import type { WeekView, DayView } from "@/lib/week-data";
 import { getWeek, listItems, updateDay } from "@/lib/client-api";
@@ -29,18 +29,42 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
   const genEntries = useGenerationEntries();
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
 
+  // Day edits are serialized (writeChain) and reloads are sequence-guarded
+  // (loadSeq) so rapid edits can't leave a day desynced from the DB — which is
+  // what orphaned generated looks from their day. viewRef mirrors `view`
+  // synchronously so a queued mutation always builds on the latest item set.
+  const viewRef = useRef<WeekView | null>(null);
+  const loadSeq = useRef(0);
+  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+
+  // Run day writes one at a time so concurrent updateDay calls can't interleave
+  // and drop each other's items.
+  const enqueueWrite = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = writeChain.current.then(fn, fn);
+    writeChain.current = run.then(
+      () => {},
+      () => {},
+    );
+    return run as Promise<T>;
+  }, []);
+
   const loadItems = useCallback(async () => {
     const all = await listItems({});
     setItemsMap(new Map(all.map((i) => [i.id, i])));
   }, []);
 
   const loadWeek = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setError(null);
     try {
       const v = await getWeek(weekStart);
+      // Ignore stale / out-of-order responses so a late reload can't clobber a
+      // freshly edited or generated day (which made the image blink away).
+      if (seq !== loadSeq.current) return;
+      viewRef.current = v;
       setView(v);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load week");
+      if (seq === loadSeq.current) setError(e instanceof Error ? e.message : "Failed to load week");
     }
   }, [weekStart]);
 
@@ -56,9 +80,13 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
   );
 
   function patchDayLocal(dayId: string, patch: Partial<DayView>) {
-    setView((prev) =>
-      prev ? { ...prev, days: prev.days.map((d) => (d.id === dayId ? { ...d, ...patch } : d)) } : prev,
-    );
+    setView((prev) => {
+      const nextView = prev
+        ? { ...prev, days: prev.days.map((d) => (d.id === dayId ? { ...d, ...patch } : d)) }
+        : prev;
+      viewRef.current = nextView; // keep the ref in lockstep for queued writes
+      return nextView;
+    });
   }
 
   // Apply any generations that finished (possibly while this component was
@@ -80,56 +108,69 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
     }
   }, [genEntries, view]);
 
-  async function toggleItem(dayId: string, itemId: string) {
-    const day = view?.days.find((d) => d.id === dayId);
+  function toggleItem(dayId: string, itemId: string) {
+    const day = viewRef.current?.days.find((d) => d.id === dayId);
     if (!day) return;
     const next = day.item_ids.includes(itemId)
       ? day.item_ids.filter((x) => x !== itemId)
       : [...day.item_ids, itemId];
-    patchDayLocal(dayId, { item_ids: next }); // optimistic
-    try {
-      await updateDay(dayId, { item_ids: next });
-      await loadWeek(); // refresh outfit_hash + any cached generated image
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update day");
-      loadWeek();
-    }
+    patchDayLocal(dayId, { item_ids: next }); // optimistic, from the latest state
+    enqueueWrite(() => updateDay(dayId, { item_ids: next }))
+      .then(() => loadWeek()) // refresh outfit_hash + any cached generated image
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to update day");
+        loadWeek();
+      });
   }
 
-  async function applyLook(dayId: string, outfit: GeneratedOutfit) {
+  function applyLook(dayId: string, outfit: GeneratedOutfit) {
     // Reuse a saved look: set the day to the outfit's items. The hash is
-    // deterministic, so loadWeek rejoins the cached image with no regeneration.
-    patchDayLocal(dayId, { item_ids: outfit.item_ids }); // optimistic
-    try {
-      await updateDay(dayId, { item_ids: outfit.item_ids });
-      await loadWeek();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to apply look");
-      loadWeek();
-    }
+    // deterministic, so the cached image links immediately — patch it straight
+    // from the outfit so it shows without waiting on (or racing) a reload.
+    patchDayLocal(dayId, {
+      item_ids: outfit.item_ids,
+      outfit_hash: outfit.outfit_hash,
+      generated_image_url: outfit.image_url,
+      palette: outfit.palette,
+    });
+    enqueueWrite(() => updateDay(dayId, { item_ids: outfit.item_ids }))
+      .then(() => loadWeek())
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to apply look");
+        loadWeek();
+      });
   }
 
-  async function saveNote(dayId: string, note: string) {
+  function saveNote(dayId: string, note: string) {
     patchDayLocal(dayId, { note });
-    try {
-      await updateDay(dayId, { note });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save note");
-    }
+    enqueueWrite(() => updateDay(dayId, { note })).catch((e) =>
+      setError(e instanceof Error ? e.message : "Failed to save note"),
+    );
   }
 
-  function generateDay(dayId: string, force: boolean): Promise<unknown> {
-    const day = view?.days.find((d) => d.id === dayId);
-    if (!day || day.item_ids.length === 0) return Promise.resolve();
+  async function generateDay(dayId: string, force: boolean): Promise<unknown> {
+    const day = viewRef.current?.days.find((d) => d.id === dayId);
+    if (!day || day.item_ids.length === 0) return;
+    // Persist the day's items FIRST so its outfit_hash matches the look we're
+    // about to generate. Without this, the image saves to generated_outfits but
+    // the day never links to it — it shows once, then vanishes on reload and is
+    // invisible to the wearer.
+    try {
+      await enqueueWrite(() => updateDay(dayId, { item_ids: day.item_ids }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save the day");
+      return;
+    }
     // Fire-and-forget into the store; it owns the promise so the generation
     // continues (and stays visible) even if this component unmounts.
     return startGeneration(dayId, day.item_ids, force);
   }
 
   async function generateWeek() {
-    if (!view) return;
+    const cur = viewRef.current;
+    if (!cur) return;
     // Uncached days = have items, no generated image, not already generating.
-    const targets = view.days.filter(
+    const targets = cur.days.filter(
       (d) =>
         d.item_ids.length > 0 &&
         !d.generated_image_url &&
@@ -137,13 +178,19 @@ export default function WeekBuilder({ refreshKey }: { refreshKey: number }) {
     );
     if (targets.length === 0) return;
     setBatch({ done: 0, total: targets.length });
-    // Fan out in parallel; update progress as each settles.
+    // Fan out; persist each day's items before generating so every one durably
+    // links to its look.
     await Promise.all(
-      targets.map((d) =>
-        startGeneration(d.id, d.item_ids, false).finally(() =>
-          setBatch((b) => (b ? { ...b, done: b.done + 1 } : b)),
-        ),
-      ),
+      targets.map(async (d) => {
+        try {
+          await enqueueWrite(() => updateDay(d.id, { item_ids: d.item_ids }));
+          await startGeneration(d.id, d.item_ids, false);
+        } catch {
+          /* the day keeps its error state via the store */
+        } finally {
+          setBatch((b) => (b ? { ...b, done: b.done + 1 } : b));
+        }
+      }),
     );
     setBatch(null);
   }
