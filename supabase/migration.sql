@@ -36,6 +36,7 @@ create table if not exists generated_outfits (
   image_url text not null,
   palette jsonb not null default '[]',
   note text,
+  archived_at timestamptz,  -- non-null = archived (hidden from the active Looks grid)
   created_at timestamptz not null default now()
 );
 
@@ -43,6 +44,11 @@ create table if not exists generated_outfits (
 -- column to your existing database:
 --   alter table generated_outfits add column if not exists note text;
 alter table generated_outfits add column if not exists note text;
+
+-- If you created generated_outfits before the "archived looks" feature, add the
+-- column to your existing database:
+--   alter table generated_outfits add column if not exists archived_at timestamptz;
+alter table generated_outfits add column if not exists archived_at timestamptz;
 
 -- If you created day_outfits before the "note from the Wearer" feature, add the
 -- column to your existing database:
@@ -73,6 +79,7 @@ create table if not exists day_outfits (
 -- Indexes
 -- ---------------------------------------------------------------------------
 create index if not exists idx_generated_outfits_hash on generated_outfits(outfit_hash);
+create index if not exists idx_generated_outfits_archived on generated_outfits(archived_at);
 create index if not exists idx_day_outfits_hash on day_outfits(outfit_hash);
 create index if not exists idx_week_plans_week_start on week_plans(week_start);
 create index if not exists idx_day_outfits_week_plan on day_outfits(week_plan_id);

@@ -45,6 +45,8 @@ export interface GeneratedOutfit {
   image_url: string;
   palette: PaletteEntry[];
   note: string | null;
+  /** Non-null once the look has been archived (e.g. replaced by a re-styled version). */
+  archived_at: string | null;
   created_at: string;
 }
 

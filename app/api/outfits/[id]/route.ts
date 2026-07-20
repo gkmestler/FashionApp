@@ -8,17 +8,19 @@ export const runtime = "nodejs";
 // Editing items or forcing a regenerate runs image generation (slow).
 export const maxDuration = 300;
 
-const OUTFIT_COLS = "id, outfit_hash, item_ids, image_url, palette, note, created_at";
+const OUTFIT_COLS = "id, outfit_hash, item_ids, image_url, palette, note, archived_at, created_at";
 
-// PATCH /api/outfits/:id  { note?, item_ids?, regenerate? }
+// PATCH /api/outfits/:id  { note?, item_ids?, regenerate?, archived? }
+// - archived: true/false → archive or restore the look (no image change)
 // - note only            → save the look's note (no image change)
-// - item_ids changed     → rebuild the look with the new items (regenerates)
+// - item_ids changed     → rebuild the look with the new items (regenerates);
+//                          the original look is ARCHIVED, not deleted
 // - regenerate: true     → force a fresh image for the same items
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const supabase = getServiceSupabase();
 
-  let body: { note?: string; item_ids?: string[]; regenerate?: boolean };
+  let body: { note?: string; item_ids?: string[]; regenerate?: boolean; archived?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -32,6 +34,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     .maybeSingle();
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Outfit not found" }, { status: 404 });
+
+  // --- Archive / restore toggle: instant, no image work. ---
+  if (typeof body.archived === "boolean") {
+    const { data, error } = await supabase
+      .from("generated_outfits")
+      .update({ archived_at: body.archived ? new Date().toISOString() : null })
+      .eq("id", id)
+      .select(OUTFIT_COLS)
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ outfit: data });
+  }
 
   const finalNote =
     body.note !== undefined ? (body.note.trim() || null) : (existing.note as string | null);
@@ -66,14 +80,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     // image + palette, applying the note to the prompt.
     await generateForItems(finalItems, { force: true, note: finalNote ?? undefined });
 
-    // Persist the note on the resulting row.
+    // Persist the note on the resulting row and make sure it's active (a prior
+    // archived look with this exact item set is "restored" by regenerating it).
     await supabase
       .from("generated_outfits")
-      .update({ note: finalNote })
+      .update({ note: finalNote, archived_at: null })
       .eq("outfit_hash", newHash);
 
-    // If the item set changed, the look "moved" to a new hash — remove the old
-    // row + image so we don't leave a stale duplicate behind.
+    // If the item set changed, the look "moved" to a new hash. ARCHIVE the
+    // original (keep its image) rather than deleting it, so the stylist can
+    // restore it if the swap was a mistake.
     if (itemsChanged) {
       const { data: newRow } = await supabase
         .from("generated_outfits")
@@ -81,8 +97,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         .eq("outfit_hash", newHash)
         .maybeSingle();
       if (newRow && newRow.id !== id) {
-        await supabase.from("generated_outfits").delete().eq("id", id);
-        await removeFromBucketByUrl(BUCKETS.generated, existing.image_url as string);
+        await supabase
+          .from("generated_outfits")
+          .update({ archived_at: new Date().toISOString() })
+          .eq("id", id);
       }
     }
 

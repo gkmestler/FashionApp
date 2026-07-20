@@ -11,7 +11,10 @@ import {
 } from "@/lib/client-api";
 import ItemPickerModal from "./ItemPickerModal";
 import LookCard from "./LookCard";
+import ArchivedLookCard from "./ArchivedLookCard";
 import { EmptyState, Spinner, Button } from "@/components/ui";
+
+type GalleryView = "active" | "archived";
 
 function sameSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -25,6 +28,7 @@ function sameSet(a: string[], b: string[]): boolean {
  * source the day-builder pulls from when applying a saved look.
  */
 export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
+  const [view, setView] = useState<GalleryView>("active");
   const [outfits, setOutfits] = useState<GeneratedOutfit[]>([]);
   const [itemsMap, setItemsMap] = useState<Map<string, ClothingItem>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -38,13 +42,18 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
   // Per-look busy state (regenerating / editing items) + item-editing flow.
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingLookId, setEditingLookId] = useState<string | null>(null);
-  const [editSelectedIds, setEditSelectedIds] = useState<string[]>([]);
+  // Unsaved item swaps, keyed by look id. A look stays on its saved items until
+  // the stylist regenerates — swapping just stages a draft (see draftFor).
+  const [drafts, setDrafts] = useState<Map<string, string[]>>(new Map());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [looks, items] = await Promise.all([listOutfits(), listItems({})]);
+      const [looks, items] = await Promise.all([
+        listOutfits(view === "archived"),
+        listItems({}),
+      ]);
       setOutfits(looks);
       setItemsMap(new Map(items.map((i) => [i.id, i])));
     } catch (e) {
@@ -52,7 +61,7 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     load();
@@ -68,6 +77,36 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
       load(); // put it back if the server rejected it
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  // Restore an archived look back to the active gallery.
+  async function restore(outfit: GeneratedOutfit) {
+    setBusyId(outfit.id);
+    setError(null);
+    setOutfits((prev) => prev.filter((o) => o.id !== outfit.id)); // leaves the archived view
+    try {
+      await updateOutfit(outfit.id, { archived: false });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Restore failed");
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Permanently delete an archived look (image + row). No undo.
+  async function deletePermanently(outfit: GeneratedOutfit) {
+    if (!confirm("Permanently delete this archived look? This can't be undone.")) return;
+    setDeletingId(outfit.id);
+    setOutfits((prev) => prev.filter((o) => o.id !== outfit.id));
+    try {
+      await deleteOutfit(outfit.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+      load();
     } finally {
       setDeletingId(null);
     }
@@ -90,47 +129,67 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
     }
   }
 
-  // Regenerate a look's image (uses its saved note). Slow — show per-card spinner.
-  async function regenerate(outfit: GeneratedOutfit) {
-    setBusyId(outfit.id);
-    setError(null);
-    try {
-      await updateOutfit(outfit.id, { regenerate: true });
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Regeneration failed");
-    } finally {
-      setBusyId(null);
-    }
+  // The items a look currently shows: its unsaved draft if it has one, else the
+  // saved set.
+  const draftFor = useCallback(
+    (o: GeneratedOutfit): string[] => drafts.get(o.id) ?? o.item_ids,
+    [drafts],
+  );
+
+  const isDirty = (o: GeneratedOutfit): boolean => {
+    const d = drafts.get(o.id);
+    return !!d && !sameSet(d, o.item_ids);
+  };
+
+  function setDraft(lookId: string, next: string[]) {
+    setDrafts((prev) => {
+      const m = new Map(prev);
+      m.set(lookId, next);
+      return m;
+    });
   }
 
-  function startEditItems(outfit: GeneratedOutfit) {
-    setEditingLookId(outfit.id);
-    setEditSelectedIds(outfit.item_ids);
+  function clearDraft(lookId: string) {
+    setDrafts((prev) => {
+      if (!prev.has(lookId)) return prev;
+      const m = new Map(prev);
+      m.delete(lookId);
+      return m;
+    });
   }
 
-  function toggleEditItem(id: string) {
-    setEditSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+  // Swap an item out of a look (staged; no image change until Regenerate).
+  function removeDraftItem(outfit: GeneratedOutfit, itemId: string) {
+    setDraft(
+      outfit.id,
+      draftFor(outfit).filter((x) => x !== itemId),
     );
   }
 
-  // Close the item picker in edit mode; if the set changed, rebuild the look.
-  async function finishEditItems() {
-    const lookId = editingLookId;
-    const original = outfits.find((o) => o.id === lookId);
-    const nextIds = editSelectedIds;
-    setEditingLookId(null);
-    if (!lookId || !original) return;
-    if (nextIds.length === 0 || sameSet(original.item_ids, nextIds)) return;
+  // Toggle an item from the picker while editing a look's staged items.
+  function toggleDraftItem(outfit: GeneratedOutfit, itemId: string) {
+    const cur = draftFor(outfit);
+    setDraft(
+      outfit.id,
+      cur.includes(itemId) ? cur.filter((x) => x !== itemId) : [...cur, itemId],
+    );
+  }
 
-    setBusyId(lookId);
+  // Regenerate a look's image. If its items were swapped, rebuild with the new
+  // set (moves the look to a new hash); otherwise refresh the same items. Slow —
+  // show a per-card spinner.
+  async function regenerate(outfit: GeneratedOutfit) {
+    const nextIds = draftFor(outfit);
+    if (nextIds.length === 0) return;
+    const changed = isDirty(outfit);
+    setBusyId(outfit.id);
     setError(null);
     try {
-      await updateOutfit(lookId, { item_ids: nextIds });
+      await updateOutfit(outfit.id, changed ? { item_ids: nextIds } : { regenerate: true });
+      clearDraft(outfit.id);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update look");
+      setError(e instanceof Error ? e.message : "Regeneration failed");
     } finally {
       setBusyId(null);
     }
@@ -152,7 +211,9 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
   }
 
   const resolveItems = (o: GeneratedOutfit): ClothingItem[] =>
-    o.item_ids.map((id) => itemsMap.get(id)).filter((x): x is ClothingItem => !!x);
+    draftFor(o).map((id) => itemsMap.get(id)).filter((x): x is ClothingItem => !!x);
+
+  const editingLook = outfits.find((o) => o.id === editingLookId) ?? null;
 
   const stagedItems = selectedIds
     .map((id) => itemsMap.get(id))
@@ -164,19 +225,42 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
         <div>
           <h2 className="text-sm font-semibold">Saved looks</h2>
           <p className="text-xs text-muted">
-            Every outfit you&apos;ve generated. Build a new one here, or reuse one on a day from the Week tab.
+            {view === "active"
+              ? "Every outfit you've generated. Build a new one here, or reuse one on a day from the Week tab."
+              : "Originals set aside when a look was re-styled. Restore one, or delete it for good."}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {outfits.length > 0 && <span className="text-xs text-muted">{outfits.length} saved</span>}
-          <Button onClick={() => setPicking(true)} disabled={generating}>
-            + Create a look
-          </Button>
+          {outfits.length > 0 && (
+            <span className="text-xs text-muted">
+              {outfits.length} {view === "active" ? "saved" : "archived"}
+            </span>
+          )}
+          {view === "active" && (
+            <Button onClick={() => setPicking(true)} disabled={generating}>
+              + Create a look
+            </Button>
+          )}
         </div>
       </div>
 
+      {/* Active / Archived toggle */}
+      <div className="inline-flex self-start rounded-lg border border-border p-0.5 text-xs">
+        {(["active", "archived"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={`rounded-md px-3 py-1 font-medium capitalize transition ${
+              view === v ? "bg-accent text-black" : "text-muted hover:text-foreground"
+            }`}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
       {/* Staging bar: items chosen for a brand-new look, then Generate. */}
-      {selectedIds.length > 0 && (
+      {view === "active" && selectedIds.length > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-accent/40 bg-accent-soft/40 p-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium">
@@ -233,33 +317,56 @@ export default function StyleGallery({ refreshKey }: { refreshKey: number }) {
           <Spinner className="h-5 w-5" />
         </div>
       ) : outfits.length === 0 ? (
-        <EmptyState
-          title="No saved looks yet"
-          subtitle="Generate outfits in the Week tab and they'll be saved here as reusable styles."
-        />
-      ) : (
+        view === "active" ? (
+          <EmptyState
+            title="No saved looks yet"
+            subtitle="Generate outfits in the Week tab and they'll be saved here as reusable styles."
+          />
+        ) : (
+          <EmptyState
+            title="Nothing archived"
+            subtitle="Swapping a look's items and regenerating moves the original here."
+          />
+        )
+      ) : view === "active" ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {outfits.map((outfit) => (
             <LookCard
               key={outfit.id}
               outfit={outfit}
               items={resolveItems(outfit)}
+              dirty={isDirty(outfit)}
               busy={busyId === outfit.id || deletingId === outfit.id}
               onNoteSave={(note) => saveNote(outfit, note)}
               onRegenerate={() => regenerate(outfit)}
-              onEditItems={() => startEditItems(outfit)}
+              onOpenPicker={() => setEditingLookId(outfit.id)}
+              onRemoveItem={(id) => removeDraftItem(outfit, id)}
+              onRevertItems={() => clearDraft(outfit.id)}
               onDelete={() => remove(outfit)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {outfits.map((outfit) => (
+            <ArchivedLookCard
+              key={outfit.id}
+              outfit={outfit}
+              items={resolveItems(outfit)}
+              busy={busyId === outfit.id || deletingId === outfit.id}
+              onRestore={() => restore(outfit)}
+              onDelete={() => deletePermanently(outfit)}
             />
           ))}
         </div>
       )}
 
       <ItemPickerModal
-        open={picking || editingLookId !== null}
-        onClose={editingLookId !== null ? finishEditItems : () => setPicking(false)}
-        dayLabel={editingLookId !== null ? "edit look" : "new look"}
-        selectedIds={editingLookId !== null ? editSelectedIds : selectedIds}
-        onToggle={editingLookId !== null ? toggleEditItem : toggleSelected}
+        open={picking || editingLook !== null}
+        onClose={editingLook !== null ? () => setEditingLookId(null) : () => setPicking(false)}
+        dayLabel={editingLook !== null ? "edit look" : "new look"}
+        selectedIds={editingLook !== null ? draftFor(editingLook) : selectedIds}
+        onToggle={editingLook !== null ? (id) => toggleDraftItem(editingLook, id) : toggleSelected}
       />
     </div>
   );

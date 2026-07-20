@@ -128,8 +128,9 @@ export async function generateOutfit(
 }
 
 // ---- Saved outfits ("looks") ----
-export async function listOutfits(): Promise<GeneratedOutfit[]> {
-  const res = await fetch("/api/outfits", { cache: "no-store" });
+// Pass archived: true to list archived looks instead of the active gallery.
+export async function listOutfits(archived = false): Promise<GeneratedOutfit[]> {
+  const res = await fetch(`/api/outfits${archived ? "?archived=1" : ""}`, { cache: "no-store" });
   const data = await jsonOrThrow<{ outfits: GeneratedOutfit[] }>(res);
   return data.outfits;
 }
@@ -140,12 +141,13 @@ export async function deleteOutfit(id: string): Promise<void> {
 }
 
 /**
- * Update a saved look: change its note, its items, and/or force a regenerate.
- * Any item change (or regenerate:true) rebuilds the image and can take a while.
+ * Update a saved look: change its note, its items, force a regenerate, or
+ * archive/restore it. Any item change (or regenerate:true) rebuilds the image
+ * and can take a while; archive/restore is instant (no image work).
  */
 export async function updateOutfit(
   id: string,
-  patch: { note?: string; item_ids?: string[]; regenerate?: boolean },
+  patch: { note?: string; item_ids?: string[]; regenerate?: boolean; archived?: boolean },
 ): Promise<GeneratedOutfit> {
   const res = await fetch(`/api/outfits/${id}`, {
     method: "PATCH",
