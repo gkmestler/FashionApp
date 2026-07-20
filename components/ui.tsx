@@ -17,7 +17,7 @@ export function PaletteStrip({
   if (!palette || palette.length === 0) return null;
   return (
     <div className={`flex items-center gap-1.5 ${className}`}>
-      {palette.map((p, i) => (
+      {palette.slice(0, 4).map((p, i) => (
         <span
           key={`${p.hex}-${i}`}
           title={p.name}
@@ -34,7 +34,7 @@ export function ColorDots({ colors, size = 16 }: { colors: string[]; size?: numb
   if (!colors?.length) return null;
   return (
     <div className="flex items-center gap-1">
-      {colors.slice(0, 6).map((c, i) => (
+      {colors.slice(0, 4).map((c, i) => (
         <span
           key={`${c}-${i}`}
           title={c}
